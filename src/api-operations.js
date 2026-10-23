@@ -1,6 +1,9 @@
+import {history} from './history.js';import {listWorkflows} from './workflow-list.js';import {tailEvents} from './journal-tail.js';
 import {statistics} from './statistics.js';import {configureQueue,listQueues} from './queues.js';import {registerWorker,touchWorker,setWorkerStatus} from './workers.js';import {listWorkers,retireWorker} from './fleet.js';import {claim} from './claim.js';import {submitWorkflow,getWorkflow} from './workflow.js';import {cancelWorkflow} from './workflow-cancel.js';import {createSchedule,listSchedules,setSchedulePaused} from './schedules.js';import {listEvents} from './events.js';import {maintenance} from './maintenance.js';import {trace} from './traces.js';import {claimEffect,acknowledgeEffect,retryEffect,listEffects} from './outbox.js';import {fields} from './validation.js';import {numeric} from './router.js';import {integrity} from './backup.js';
 export function operationRoutes(store){return[
  {method:'GET',path:'/api/overview',handler:()=>statistics(store)},
+ {method:'GET',path:'/api/history',handler:()=>history(store)},
+ {method:'GET',path:'/api/workflows',handler:()=>({items:listWorkflows(store)})},
  {method:'GET',path:'/api/queues',handler:()=>({items:listQueues(store)})},
  {method:'PUT',path:'/api/queues/:name',handler:({params:p,body})=>configureQueue(store,p.name,body)},
  {method:'GET',path:'/api/workers',handler:()=>({items:listWorkers(store)})},
@@ -15,7 +18,7 @@ export function operationRoutes(store){return[
  {method:'GET',path:'/api/schedules',handler:()=>({items:listSchedules(store)})},
  {method:'POST',path:'/api/schedules',status:201,handler:({body})=>createSchedule(store,body)},
  {method:'POST',path:'/api/schedules/:id/pause',handler:({params:p,body})=>{fields(body,['paused']);return setSchedulePaused(store,p.id,body.paused);}},
- {method:'GET',path:'/api/events',handler:({query:q})=>listEvents(store,{after:numeric(q.get('after'),0),limit:numeric(q.get('limit'),100)})},
+ {method:'GET',path:'/api/events',handler:({query:q})=>q.has('after')?listEvents(store,{after:numeric(q.get('after'),0),limit:numeric(q.get('limit'),100)}):tailEvents(store,{limit:numeric(q.get('limit'),100)})},
  {method:'GET',path:'/api/traces/:id',handler:({params:p})=>trace(store,p.id)},
  {method:'POST',path:'/api/maintenance',handler:()=>maintenance(store)},
  {method:'GET',path:'/api/integrity',handler:()=>integrity(store)},
