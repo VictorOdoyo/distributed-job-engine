@@ -1,0 +1,1 @@
+import {readdirSync} from 'node:fs';import {spawnSync} from 'node:child_process';const files=readdirSync(new URL('../test',import.meta.url)).filter(n=>n.endsWith('.test.js')).sort().map(n=>'test/'+n);const r=spawnSync(process.execPath,['--test',...process.argv.slice(2),...files],{stdio:'inherit'});process.exit(r.status??1);
