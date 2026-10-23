@@ -1,3 +1,42 @@
-import {listQueues} from './queues.js';
-export function percentile(values,p){if(!values.length)return null;const a=[...values].sort((x,y)=>x-y);return a[Math.max(0,Math.ceil(p*a.length)-1)];}
-export function statistics(store){const now=store.now(),states=Object.fromEntries(['waiting','blocked','running','succeeded','failed','cancelled'].map(s=>[s,0]));for(const row of store.db.prepare('SELECT state,count(*) n FROM jobs GROUP BY state').all())states[row.state]=row.n;const durations=store.db.prepare("SELECT finished_at-started_at value FROM attempts WHERE status='succeeded' AND finished_at>=? ORDER BY finished_at DESC LIMIT 10000").all(now-86400000).map(r=>r.value);const lag=store.db.prepare("SELECT min(run_at) oldest FROM jobs WHERE state='waiting' AND run_at<=?").get(now).oldest,workers=store.db.prepare("SELECT count(*) n FROM workers WHERE status='online' AND expires_at>?").get(now).n;return{time:now,states,total:Object.values(states).reduce((a,b)=>a+b,0),workers,readyLagMs:lag===null?0:now-lag,latency:{samples:durations.length,p50:percentile(durations,.5),p95:percentile(durations,.95),p99:percentile(durations,.99)},queues:listQueues(store),outbox:store.db.prepare("SELECT count(*) pending FROM outbox WHERE state!='delivered'").get().pending};}
+import { listQueues } from './queues.js';
+export function percentile(values, p) {
+  if (!values.length) return null;
+  const a = [...values].sort((x, y) => x - y);
+  return a[Math.max(0, Math.ceil(p * a.length) - 1)];
+}
+export function statistics(store) {
+  const now = store.now(),
+    states = Object.fromEntries(
+      ['waiting', 'blocked', 'running', 'succeeded', 'failed', 'cancelled'].map((s) => [s, 0]),
+    );
+  for (const row of store.db.prepare('SELECT state,count(*) n FROM jobs GROUP BY state').all())
+    states[row.state] = row.n;
+  const durations = store.db
+    .prepare(
+      "SELECT finished_at-started_at value FROM attempts WHERE status='succeeded' AND finished_at>=? ORDER BY finished_at DESC LIMIT 10000",
+    )
+    .all(now - 86400000)
+    .map((r) => r.value);
+  const lag = store.db
+      .prepare("SELECT min(run_at) oldest FROM jobs WHERE state='waiting' AND run_at<=?")
+      .get(now).oldest,
+    workers = store.db
+      .prepare("SELECT count(*) n FROM workers WHERE status='online' AND expires_at>?")
+      .get(now).n;
+  return {
+    time: now,
+    states,
+    total: Object.values(states).reduce((a, b) => a + b, 0),
+    workers,
+    readyLagMs: lag === null ? 0 : now - lag,
+    latency: {
+      samples: durations.length,
+      p50: percentile(durations, 0.5),
+      p95: percentile(durations, 0.95),
+      p99: percentile(durations, 0.99),
+    },
+    queues: listQueues(store),
+    outbox: store.db.prepare("SELECT count(*) pending FROM outbox WHERE state!='delivered'").get()
+      .pending,
+  };
+}

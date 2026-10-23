@@ -1,2 +1,30 @@
-import {integer} from './validation.js';import {failIn} from './failure.js';import {hydrate} from './jobs.js';import {emit} from './events.js';
-export function reap(store,{limit=100}={}){integer(limit,'limit',1,1000);return store.tx(now=>{const expired=store.db.prepare("SELECT * FROM jobs WHERE state='running' AND lease_until<=? ORDER BY lease_until,id LIMIT ?").all(now,limit);for(const row of expired)failIn(store,hydrate(row),now,{code:'LEASE_EXPIRED',message:'Worker lease expired',retryable:true},{expired:true});const workers=store.db.prepare("SELECT id FROM workers WHERE status!='offline' AND expires_at<=?").all(now);for(const w of workers){store.db.prepare("UPDATE workers SET status='offline' WHERE id=?").run(w.id);emit(store,now,'worker.expired',null,{workerId:w.id});}return{recovered:expired.length,offlineWorkers:workers.length};});}
+import { integer } from './validation.js';
+import { failIn } from './failure.js';
+import { hydrate } from './jobs.js';
+import { emit } from './events.js';
+export function reap(store, { limit = 100 } = {}) {
+  integer(limit, 'limit', 1, 1000);
+  return store.tx((now) => {
+    const expired = store.db
+      .prepare(
+        "SELECT * FROM jobs WHERE state='running' AND lease_until<=? ORDER BY lease_until,id LIMIT ?",
+      )
+      .all(now, limit);
+    for (const row of expired)
+      failIn(
+        store,
+        hydrate(row),
+        now,
+        { code: 'LEASE_EXPIRED', message: 'Worker lease expired', retryable: true },
+        { expired: true },
+      );
+    const workers = store.db
+      .prepare("SELECT id FROM workers WHERE status!='offline' AND expires_at<=?")
+      .all(now);
+    for (const w of workers) {
+      store.db.prepare("UPDATE workers SET status='offline' WHERE id=?").run(w.id);
+      emit(store, now, 'worker.expired', null, { workerId: w.id });
+    }
+    return { recovered: expired.length, offlineWorkers: workers.length };
+  });
+}

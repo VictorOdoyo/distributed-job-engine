@@ -1,5 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {fixture} from './helpers.js';import {createServer} from '../src/server.js';import {Client} from '../src/client.js';import {runWorker} from '../src/worker.js';import {submit} from '../src/submit.js';import {getJob} from '../src/jobs.js';
-test('remote worker executes isolated jobs concurrently and retries a transient attempt',async t=>{const{store}=fixture(t),server=createServer(store,{rateLimit:false});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>{server.closeAllConnections();return new Promise(r=>server.close(r));});const jobs=[submit(store,{kind:'hash.batch',payload:{items:['a','b']}}).job,submit(store,{kind:'flaky',payload:{failures:1},backoffBase:0,backoffCap:0}).job,submit(store,{kind:'report.aggregate',payload:{values:[2,4]}}).job];const c=new Client('http://127.0.0.1:'+server.address().port),r=await runWorker(c,{capacity:2,pollMs:20,maxJobs:4});assert.equal(r.succeeded,3);assert.equal(r.failed,1);assert(jobs.every(j=>getJob(store,j.id).state==='succeeded'));assert.equal(getJob(store,jobs[1].id).attempts,2);});
+import { fixture } from './helpers.js';
+import { createServer } from '../src/server.js';
+import { Client } from '../src/client.js';
+import { runWorker } from '../src/worker.js';
+import { submit } from '../src/submit.js';
+import { getJob } from '../src/jobs.js';
+test('remote worker executes isolated jobs concurrently and retries a transient attempt', async (t) => {
+  const { store } = fixture(t),
+    server = createServer(store, { rateLimit: false });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  t.after(() => {
+    server.closeAllConnections();
+    return new Promise((r) => server.close(r));
+  });
+  const jobs = [
+    submit(store, { kind: 'hash.batch', payload: { items: ['a', 'b'] } }).job,
+    submit(store, { kind: 'flaky', payload: { failures: 1 }, backoffBase: 0, backoffCap: 0 }).job,
+    submit(store, { kind: 'report.aggregate', payload: { values: [2, 4] } }).job,
+  ];
+  const c = new Client('http://127.0.0.1:' + server.address().port),
+    r = await runWorker(c, { capacity: 2, pollMs: 20, maxJobs: 4 });
+  assert.equal(r.succeeded, 3);
+  assert.equal(r.failed, 1);
+  assert(jobs.every((j) => getJob(store, j.id).state === 'succeeded'));
+  assert.equal(getJob(store, jobs[1].id).attempts, 2);
+});

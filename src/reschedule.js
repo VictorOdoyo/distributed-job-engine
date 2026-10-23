@@ -1,2 +1,23 @@
-import {fields,integer} from './validation.js';import {requireThat} from './errors.js';import {getJob} from './jobs.js';import {emit} from './events.js';
-export function reschedule(store,id,options){fields(options,['runAt','priority']);if(options.runAt!==undefined)integer(options.runAt,'runAt');if(options.priority!==undefined)integer(options.priority,'priority',-100,100);return store.tx(now=>{const j=getJob(store,id);requireThat(['waiting','blocked'].includes(j.state),'INVALID_STATE','Only pending jobs can be rescheduled',409);store.db.prepare('UPDATE jobs SET run_at=?,priority=?,updated_at=? WHERE id=?').run(options.runAt??j.run_at,options.priority??j.priority,now,id);emit(store,now,'job.rescheduled',j,options);return getJob(store,id);});}
+import { fields, integer } from './validation.js';
+import { requireThat } from './errors.js';
+import { getJob } from './jobs.js';
+import { emit } from './events.js';
+export function reschedule(store, id, options) {
+  fields(options, ['runAt', 'priority']);
+  if (options.runAt !== undefined) integer(options.runAt, 'runAt');
+  if (options.priority !== undefined) integer(options.priority, 'priority', -100, 100);
+  return store.tx((now) => {
+    const j = getJob(store, id);
+    requireThat(
+      ['waiting', 'blocked'].includes(j.state),
+      'INVALID_STATE',
+      'Only pending jobs can be rescheduled',
+      409,
+    );
+    store.db
+      .prepare('UPDATE jobs SET run_at=?,priority=?,updated_at=? WHERE id=?')
+      .run(options.runAt ?? j.run_at, options.priority ?? j.priority, now, id);
+    emit(store, now, 'job.rescheduled', j, options);
+    return getJob(store, id);
+  });
+}

@@ -1,3 +1,36 @@
-import {encode} from './codec.js';import {leasedJob,CLEAR_LEASE} from './fencing.js';import {getJob} from './jobs.js';import {retryDelay,classifyFailure} from './retry.js';import {emit} from './events.js';import {settleDependencies} from './settle.js';
-export function failIn(store,job,now,error,{expired=false}={}){const failure=classifyFailure(error),retry=failure.retryable&&job.attempts<job.max_attempts,state=retry?'waiting':'failed',runAt=retry?now+retryDelay(job.attempts,{base:job.backoff_base,cap:job.backoff_cap,key:job.id}):job.run_at;store.db.prepare('UPDATE jobs SET state=?,error=?,run_at=?,finished_at=?,updated_at=?,'+CLEAR_LEASE+' WHERE id=?').run(state,encode(failure),runAt,retry?null:now,now,job.id);store.db.prepare('UPDATE attempts SET status=?,error=?,finished_at=? WHERE token=?').run(expired?'expired':'failed',encode(failure),now,job.lease_token);emit(store,now,retry?'job.retry_scheduled':'job.failed',job,{attempt:job.attempts,error:failure,runAt});settleDependencies(store,now);return getJob(store,job.id);}
-export function fail(store,id,token,error){const failure=classifyFailure(error);return store.tx(now=>failIn(store,leasedJob(store,id,token,now),now,failure));}
+import { encode } from './codec.js';
+import { leasedJob, CLEAR_LEASE } from './fencing.js';
+import { getJob } from './jobs.js';
+import { retryDelay, classifyFailure } from './retry.js';
+import { emit } from './events.js';
+import { settleDependencies } from './settle.js';
+export function failIn(store, job, now, error, { expired = false } = {}) {
+  const failure = classifyFailure(error),
+    retry = failure.retryable && job.attempts < job.max_attempts,
+    state = retry ? 'waiting' : 'failed',
+    runAt = retry
+      ? now +
+        retryDelay(job.attempts, { base: job.backoff_base, cap: job.backoff_cap, key: job.id })
+      : job.run_at;
+  store.db
+    .prepare(
+      'UPDATE jobs SET state=?,error=?,run_at=?,finished_at=?,updated_at=?,' +
+        CLEAR_LEASE +
+        ' WHERE id=?',
+    )
+    .run(state, encode(failure), runAt, retry ? null : now, now, job.id);
+  store.db
+    .prepare('UPDATE attempts SET status=?,error=?,finished_at=? WHERE token=?')
+    .run(expired ? 'expired' : 'failed', encode(failure), now, job.lease_token);
+  emit(store, now, retry ? 'job.retry_scheduled' : 'job.failed', job, {
+    attempt: job.attempts,
+    error: failure,
+    runAt,
+  });
+  settleDependencies(store, now);
+  return getJob(store, job.id);
+}
+export function fail(store, id, token, error) {
+  const failure = classifyFailure(error);
+  return store.tx((now) => failIn(store, leasedJob(store, id, token, now), now, failure));
+}

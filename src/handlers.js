@@ -1,3 +1,108 @@
-import {createHash} from 'node:crypto';import {setTimeout as delay,setImmediate as yieldNow} from 'node:timers/promises';import {integer,name} from './validation.js';import {EngineError,requireThat} from './errors.js';
-export const KINDS=['hash.batch','report.aggregate','text.normalize','sleep','flaky','permanent.fail','outbox.publish'];
-export async function handle(job,{signal}={}){signal?.throwIfAborted();const p=job.payload??{};switch(job.kind){case'hash.batch':{requireThat(Array.isArray(p.items)&&p.items.length<=256&&p.items.every(x=>typeof x==='string'&&x.length<=4096),'HANDLER_INPUT','hash.batch requires <=256 bounded strings');const hashes=[];for(const value of p.items){signal?.throwIfAborted();hashes.push(createHash('sha256').update(value).digest('hex'));await yieldNow();}return{result:{hashes,count:hashes.length}};}case'report.aggregate':{requireThat(Array.isArray(p.values)&&p.values.length>0&&p.values.length<=10000&&p.values.every(Number.isFinite),'HANDLER_INPUT','report.aggregate requires 1..10000 finite values');let sum=0,correction=0;for(const v of p.values){const y=v-correction,t=sum+y;correction=(t-sum)-y;sum=t;}const values=[...p.values].sort((a,b)=>a-b);return{result:{count:values.length,sum,mean:sum/values.length,min:values[0],max:values.at(-1),median:values.length%2?values[values.length>>1]:(values[values.length/2-1]+values[values.length/2])/2}};}case'text.normalize':{requireThat(Array.isArray(p.items)&&p.items.length<=1000&&p.items.every(x=>typeof x==='string'&&x.length<=1000),'HANDLER_INPUT','text.normalize requires bounded strings');const items=[...new Set(p.items.map(x=>x.normalize('NFKC').trim().toLowerCase()).filter(Boolean))];return{result:{items,count:items.length}};}case'sleep':await delay(integer(p.ms??1000,'ms',0,30000),undefined,{signal});return{result:{sleptMs:p.ms??1000}};case'flaky':if(job.attempts<=integer(p.failures??1,'failures',0,19)){const e=new Error('Simulated transient dependency failure');e.code='TRANSIENT';throw e;}return{result:{recoveredOnAttempt:job.attempts}};case'permanent.fail':{const e=new Error('Simulated permanent input failure');e.retryable=false;e.code='PERMANENT';throw e;}case'outbox.publish':return{result:{published:true},effects:[{topic:name(p.topic??'demo.ready','Topic'),payload:p.message??{jobId:job.id}}]};default:throw new EngineError('UNKNOWN_KIND','No handler registered for '+job.kind,400);}}
+import { createHash } from 'node:crypto';
+import { setTimeout as delay, setImmediate as yieldNow } from 'node:timers/promises';
+import { integer, name } from './validation.js';
+import { EngineError, requireThat } from './errors.js';
+export const KINDS = [
+  'hash.batch',
+  'report.aggregate',
+  'text.normalize',
+  'sleep',
+  'flaky',
+  'permanent.fail',
+  'outbox.publish',
+];
+export async function handle(job, { signal } = {}) {
+  signal?.throwIfAborted();
+  const p = job.payload ?? {};
+  switch (job.kind) {
+    case 'hash.batch': {
+      requireThat(
+        Array.isArray(p.items) &&
+          p.items.length <= 256 &&
+          p.items.every((x) => typeof x === 'string' && x.length <= 4096),
+        'HANDLER_INPUT',
+        'hash.batch requires <=256 bounded strings',
+      );
+      const hashes = [];
+      for (const value of p.items) {
+        signal?.throwIfAborted();
+        hashes.push(createHash('sha256').update(value).digest('hex'));
+        await yieldNow();
+      }
+      return { result: { hashes, count: hashes.length } };
+    }
+    case 'report.aggregate': {
+      requireThat(
+        Array.isArray(p.values) &&
+          p.values.length > 0 &&
+          p.values.length <= 10000 &&
+          p.values.every(Number.isFinite),
+        'HANDLER_INPUT',
+        'report.aggregate requires 1..10000 finite values',
+      );
+      let sum = 0,
+        correction = 0;
+      for (const v of p.values) {
+        const y = v - correction,
+          t = sum + y;
+        correction = t - sum - y;
+        sum = t;
+      }
+      const values = [...p.values].sort((a, b) => a - b);
+      return {
+        result: {
+          count: values.length,
+          sum,
+          mean: sum / values.length,
+          min: values[0],
+          max: values.at(-1),
+          median:
+            values.length % 2
+              ? values[values.length >> 1]
+              : (values[values.length / 2 - 1] + values[values.length / 2]) / 2,
+        },
+      };
+    }
+    case 'text.normalize': {
+      requireThat(
+        Array.isArray(p.items) &&
+          p.items.length <= 1000 &&
+          p.items.every((x) => typeof x === 'string' && x.length <= 1000),
+        'HANDLER_INPUT',
+        'text.normalize requires bounded strings',
+      );
+      const items = [
+        ...new Set(p.items.map((x) => x.normalize('NFKC').trim().toLowerCase()).filter(Boolean)),
+      ];
+      return { result: { items, count: items.length } };
+    }
+    case 'sleep':
+      await delay(integer(p.ms ?? 1000, 'ms', 0, 30000), undefined, { signal });
+      return { result: { sleptMs: p.ms ?? 1000 } };
+    case 'flaky':
+      if (job.attempts <= integer(p.failures ?? 1, 'failures', 0, 19)) {
+        const e = new Error('Simulated transient dependency failure');
+        e.code = 'TRANSIENT';
+        throw e;
+      }
+      return { result: { recoveredOnAttempt: job.attempts } };
+    case 'permanent.fail': {
+      const e = new Error('Simulated permanent input failure');
+      e.retryable = false;
+      e.code = 'PERMANENT';
+      throw e;
+    }
+    case 'outbox.publish':
+      return {
+        result: { published: true },
+        effects: [
+          {
+            topic: name(p.topic ?? 'demo.ready', 'Topic'),
+            payload: p.message ?? { jobId: job.id },
+          },
+        ],
+      };
+    default:
+      throw new EngineError('UNKNOWN_KIND', 'No handler registered for ' + job.kind, 400);
+  }
+}

@@ -1,5 +1,5 @@
-export const VERSION=1;
-export const SCHEMA=`
+export const VERSION = 1;
+export const SCHEMA = `
 CREATE TABLE queues(name TEXT PRIMARY KEY,paused INTEGER NOT NULL DEFAULT 0 CHECK(paused IN(0,1)),concurrency INTEGER NOT NULL DEFAULT 10 CHECK(concurrency BETWEEN 1 AND 10000),max_pending INTEGER NOT NULL DEFAULT 10000,rate_limit INTEGER NOT NULL DEFAULT 0,rate_window_ms INTEGER NOT NULL DEFAULT 1000,window_start INTEGER NOT NULL DEFAULT 0,window_count INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL);
 CREATE TABLE jobs(id TEXT PRIMARY KEY,queue TEXT NOT NULL REFERENCES queues(name),kind TEXT NOT NULL,payload TEXT NOT NULL,priority INTEGER NOT NULL DEFAULT 0,state TEXT NOT NULL CHECK(state IN('waiting','blocked','running','succeeded','failed','cancelled')),run_at INTEGER NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,max_attempts INTEGER NOT NULL,backoff_base INTEGER NOT NULL,backoff_cap INTEGER NOT NULL,timeout_ms INTEGER NOT NULL,result TEXT,error TEXT,lease_owner TEXT,lease_token TEXT,lease_until INTEGER,started_at INTEGER,finished_at INTEGER,workflow_id TEXT,trace_id TEXT NOT NULL,tags TEXT NOT NULL DEFAULT '{}',replayed_from TEXT, CHECK((state='running' AND lease_owner IS NOT NULL AND lease_token IS NOT NULL AND lease_until IS NOT NULL) OR (state!='running' AND lease_owner IS NULL AND lease_token IS NULL AND lease_until IS NULL)));
 CREATE INDEX jobs_ready ON jobs(queue,state,run_at,priority DESC,created_at,id);

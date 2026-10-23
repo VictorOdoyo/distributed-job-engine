@@ -1,6 +1,65 @@
-import {randomUUID} from 'node:crypto';import {integer,name} from './validation.js';import {decode} from './codec.js';import {requireThat} from './errors.js';
-export function claimEffect(store,{leaseMs=10000,topic}={}){integer(leaseMs,'leaseMs',100,60000);if(topic)name(topic,'Topic');return store.tx(now=>{const row=store.db.prepare("SELECT * FROM outbox WHERE (state='pending' OR (state='delivering' AND lease_until<=?))"+(topic?' AND topic=?':'')+' ORDER BY created_at,id LIMIT 1').get(now,...(topic?[topic]:[]));if(!row)return null;const token=randomUUID();store.db.prepare("UPDATE outbox SET state='delivering',token=?,lease_until=?,attempts=attempts+1 WHERE id=?").run(token,now+leaseMs,row.id);const result=store.db.prepare('SELECT * FROM outbox WHERE id=?').get(row.id);return{...result,payload:decode(result.payload)};});}
-function owned(store,id,token,now){name(id,'Effect ID');name(token,'Effect token');const r=store.db.prepare('SELECT * FROM outbox WHERE id=?').get(id);requireThat(r&&r.state==='delivering'&&r.token===token&&r.lease_until>now,'EFFECT_FENCED','Effect delivery no longer owned',409);return r;}
-export function acknowledgeEffect(store,id,token){return store.tx(now=>{owned(store,id,token,now);store.db.prepare("UPDATE outbox SET state='delivered',token=NULL,lease_until=NULL,delivered_at=? WHERE id=?").run(now,id);return{id,state:'delivered'};});}
-export function retryEffect(store,id,token){return store.tx(now=>{owned(store,id,token,now);store.db.prepare("UPDATE outbox SET state='pending',token=NULL,lease_until=NULL WHERE id=?").run(id);return{id,state:'pending'};});}
-export function listEffects(store,{limit=100}={}){integer(limit,'limit',1,500);return store.db.prepare('SELECT * FROM outbox ORDER BY created_at DESC,id LIMIT ?').all(limit).map(r=>({...r,payload:decode(r.payload)}));}
+import { randomUUID } from 'node:crypto';
+import { integer, name } from './validation.js';
+import { decode } from './codec.js';
+import { requireThat } from './errors.js';
+export function claimEffect(store, { leaseMs = 10000, topic } = {}) {
+  integer(leaseMs, 'leaseMs', 100, 60000);
+  if (topic) name(topic, 'Topic');
+  return store.tx((now) => {
+    const row = store.db
+      .prepare(
+        "SELECT * FROM outbox WHERE (state='pending' OR (state='delivering' AND lease_until<=?))" +
+          (topic ? ' AND topic=?' : '') +
+          ' ORDER BY created_at,id LIMIT 1',
+      )
+      .get(now, ...(topic ? [topic] : []));
+    if (!row) return null;
+    const token = randomUUID();
+    store.db
+      .prepare(
+        "UPDATE outbox SET state='delivering',token=?,lease_until=?,attempts=attempts+1 WHERE id=?",
+      )
+      .run(token, now + leaseMs, row.id);
+    const result = store.db.prepare('SELECT * FROM outbox WHERE id=?').get(row.id);
+    return { ...result, payload: decode(result.payload) };
+  });
+}
+function owned(store, id, token, now) {
+  name(id, 'Effect ID');
+  name(token, 'Effect token');
+  const r = store.db.prepare('SELECT * FROM outbox WHERE id=?').get(id);
+  requireThat(
+    r && r.state === 'delivering' && r.token === token && r.lease_until > now,
+    'EFFECT_FENCED',
+    'Effect delivery no longer owned',
+    409,
+  );
+  return r;
+}
+export function acknowledgeEffect(store, id, token) {
+  return store.tx((now) => {
+    owned(store, id, token, now);
+    store.db
+      .prepare(
+        "UPDATE outbox SET state='delivered',token=NULL,lease_until=NULL,delivered_at=? WHERE id=?",
+      )
+      .run(now, id);
+    return { id, state: 'delivered' };
+  });
+}
+export function retryEffect(store, id, token) {
+  return store.tx((now) => {
+    owned(store, id, token, now);
+    store.db
+      .prepare("UPDATE outbox SET state='pending',token=NULL,lease_until=NULL WHERE id=?")
+      .run(id);
+    return { id, state: 'pending' };
+  });
+}
+export function listEffects(store, { limit = 100 } = {}) {
+  integer(limit, 'limit', 1, 500);
+  return store.db
+    .prepare('SELECT * FROM outbox ORDER BY created_at DESC,id LIMIT ?')
+    .all(limit)
+    .map((r) => ({ ...r, payload: decode(r.payload) }));
+}

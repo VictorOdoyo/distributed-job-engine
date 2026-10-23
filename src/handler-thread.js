@@ -1,2 +1,18 @@
-import {parentPort,workerData} from 'node:worker_threads';import {classifyFailure} from './retry.js';
-try{const module=await import(workerData.moduleURL??new URL('./handlers.js',import.meta.url).href);const value=await module.handle(workerData.job,{});parentPort.postMessage({ok:true,value});}catch(error){const failure=classifyFailure(error);if(error?.code==='HANDLER_INPUT'||error?.code==='VALIDATION'||error?.code==='UNKNOWN_KIND')failure.retryable=false;parentPort.postMessage({ok:false,error:failure});}
+import { parentPort, workerData } from 'node:worker_threads';
+import { classifyFailure } from './retry.js';
+try {
+  const module = await import(
+    workerData.moduleURL ?? new URL('./handlers.js', import.meta.url).href
+  );
+  const value = await module.handle(workerData.job, {});
+  parentPort.postMessage({ ok: true, value });
+} catch (error) {
+  const failure = classifyFailure(error);
+  if (
+    error?.code === 'HANDLER_INPUT' ||
+    error?.code === 'VALIDATION' ||
+    error?.code === 'UNKNOWN_KIND'
+  )
+    failure.retryable = false;
+  parentPort.postMessage({ ok: false, error: failure });
+}

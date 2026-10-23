@@ -1,2 +1,75 @@
-const NS='http://www.w3.org/2000/svg';function svgEl(tag,attrs,text){const n=document.createElementNS(NS,tag);for(const[k,v]of Object.entries(attrs))n.setAttribute(k,String(v));if(text!==undefined)n.textContent=text;return n;}
-export function renderChart(host,history){const points=history.points,max=Math.max(1,...points.flatMap(p=>[p.submitted,p.succeeded,p.failed])),svg=svgEl('svg',{viewBox:'0 0 600 150',role:'img','aria-label':'Actual job events per minute; maximum '+max});for(let i=0;i<=3;i++){const y=15+i*35;svg.append(svgEl('line',{x1:27,y1:y,x2:590,y2:y,stroke:'#eef2f6','stroke-dasharray':'3 4'}));svg.append(svgEl('text',{x:20,y:y+3,fill:'#aab6c5','font-size':8,'text-anchor':'end'},String(Math.round(max*(1-i/3)))));}for(const[key,color]of[['submitted','#82abd8'],['succeeded','#3bb69c'],['failed','#e0a45c']]){const d=points.map((p,i)=>(i?'L':'M')+(30+i/(points.length-1)*555).toFixed(2)+' '+(120-p[key]/max*105).toFixed(2)).join(' ');svg.append(svgEl('path',{d,stroke:color,fill:'none','stroke-width':2,'stroke-linejoin':'round'}));}for(const i of[0,Math.floor(points.length/2),points.length-1])svg.append(svgEl('text',{x:30+i/(points.length-1)*555,y:145,fill:'#aab6c5','font-size':8,'text-anchor':i===0?'start':i===points.length-1?'end':'middle'},new Date(points[i].time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})));host.replaceChildren(svg);}
+const NS = 'http://www.w3.org/2000/svg';
+function svgEl(tag, attrs, text) {
+  const n = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, String(v));
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+export function renderChart(host, history) {
+  const points = history.points,
+    max = Math.max(1, ...points.flatMap((p) => [p.submitted, p.succeeded, p.failed])),
+    svg = svgEl('svg', {
+      viewBox: '0 0 600 150',
+      role: 'img',
+      'aria-label': 'Actual job events per minute; maximum ' + max,
+    });
+  for (let i = 0; i <= 3; i++) {
+    const y = 15 + i * 35;
+    svg.append(
+      svgEl('line', {
+        x1: 27,
+        y1: y,
+        x2: 590,
+        y2: y,
+        stroke: '#eef2f6',
+        'stroke-dasharray': '3 4',
+      }),
+    );
+    svg.append(
+      svgEl(
+        'text',
+        { x: 20, y: y + 3, fill: '#aab6c5', 'font-size': 8, 'text-anchor': 'end' },
+        String(Math.round(max * (1 - i / 3))),
+      ),
+    );
+  }
+  for (const [key, color] of [
+    ['submitted', '#82abd8'],
+    ['succeeded', '#3bb69c'],
+    ['failed', '#e0a45c'],
+  ]) {
+    const d = points
+      .map(
+        (p, i) =>
+          (i ? 'L' : 'M') +
+          (30 + (i / (points.length - 1)) * 555).toFixed(2) +
+          ' ' +
+          (120 - (p[key] / max) * 105).toFixed(2),
+      )
+      .join(' ');
+    svg.append(
+      svgEl('path', {
+        d,
+        stroke: color,
+        fill: 'none',
+        'stroke-width': 2,
+        'stroke-linejoin': 'round',
+      }),
+    );
+  }
+  for (const i of [0, Math.floor(points.length / 2), points.length - 1])
+    svg.append(
+      svgEl(
+        'text',
+        {
+          x: 30 + (i / (points.length - 1)) * 555,
+          y: 145,
+          fill: '#aab6c5',
+          'font-size': 8,
+          'text-anchor': i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle',
+        },
+        new Date(points[i].time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      ),
+    );
+  host.replaceChildren(svg);
+}

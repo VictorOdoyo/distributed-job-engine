@@ -1,2 +1,18 @@
-import {Store,registerWorker,claim,complete} from '../../src/index.js';
-const[file,id,mode]=process.argv.slice(2),store=new Store(file,{timeout:10000});registerWorker(store,{id,capacity:1});let processed=[];while(true){const j=claim(store,id,{leaseMs:mode==='crash'?300:10000});if(!j)break;if(mode==='crash'){console.log(JSON.stringify(j));store.close();process.exit(0);}complete(store,j.id,j.lease_token,{worker:id});processed.push(j.id);}store.close();console.log(JSON.stringify(processed));
+import { Store, registerWorker, claim, complete } from '../../src/index.js';
+const [file, id, mode] = process.argv.slice(2),
+  store = new Store(file, { timeout: 10000 });
+registerWorker(store, { id, capacity: 1 });
+let processed = [];
+while (true) {
+  const j = claim(store, id, { leaseMs: mode === 'crash' ? 300 : 10000 });
+  if (!j) break;
+  if (mode === 'crash') {
+    console.log(JSON.stringify(j));
+    store.close();
+    process.exit(0);
+  }
+  complete(store, j.id, j.lease_token, { worker: id });
+  processed.push(j.id);
+}
+store.close();
+console.log(JSON.stringify(processed));

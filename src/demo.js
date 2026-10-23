@@ -1,2 +1,87 @@
-import {submitBulk} from './bulk.js';import {submitWorkflow} from './workflow.js';import {configureQueue} from './queues.js';import {createSchedule} from './schedules.js';
-export function seedDemo(store,{force=false}={}){if(!force&&store.db.prepare('SELECT count(*) n FROM jobs').get().n)return{seeded:false};for(const[queue,concurrency]of[['media',3],['analytics',2],['notifications',2]])configureQueue(store,queue,{concurrency});const specs=[{queue:'media',kind:'hash.batch',payload:{items:['portrait.png','campaign-banner.webp','product-detail.jpg']}},{queue:'analytics',kind:'report.aggregate',payload:{values:[180,220,195,310,275,289]}},{queue:'media',kind:'flaky',payload:{failures:1},backoffBase:1000,backoffCap:2000},{queue:'notifications',kind:'outbox.publish',payload:{topic:'report.ready',message:{report:'weekly-summary'}}},{queue:'notifications',kind:'permanent.fail',payload:{reason:'demonstrate dead-letter inspection'}},...Array.from({length:8},(_,i)=>({queue:i%2?'media':'analytics',kind:'sleep',payload:{ms:1000+i*250},priority:i%3,runAt:store.now()+i*1500}))];const jobs=submitBulk(store,specs);const workflow=submitWorkflow(store,{name:'publish-pipeline',nodes:[{key:'fetch',job:{queue:'media',kind:'sleep',payload:{ms:1000}}},{key:'hash',job:{queue:'media',kind:'hash.batch',payload:{items:['asset-a','asset-b']}},dependsOn:['fetch']},{key:'summarize',job:{queue:'analytics',kind:'report.aggregate',payload:{values:[12,30,25,18]}},dependsOn:['fetch']},{key:'notify',job:{queue:'notifications',kind:'outbox.publish',payload:{topic:'pipeline.complete'}},dependsOn:['hash','summarize']}]});if(!store.db.prepare('SELECT 1 FROM schedules LIMIT 1').get())createSchedule(store,{queue:'analytics',kind:'report.aggregate',payload:{values:[10,20,30]},intervalMs:60000});return{seeded:true,jobs:jobs.length,workflowId:workflow.id};}
+import { submitBulk } from './bulk.js';
+import { submitWorkflow } from './workflow.js';
+import { configureQueue } from './queues.js';
+import { createSchedule } from './schedules.js';
+export function seedDemo(store, { force = false } = {}) {
+  if (!force && store.db.prepare('SELECT count(*) n FROM jobs').get().n) return { seeded: false };
+  for (const [queue, concurrency] of [
+    ['media', 3],
+    ['analytics', 2],
+    ['notifications', 2],
+  ])
+    configureQueue(store, queue, { concurrency });
+  const specs = [
+    {
+      queue: 'media',
+      kind: 'hash.batch',
+      payload: { items: ['portrait.png', 'campaign-banner.webp', 'product-detail.jpg'] },
+    },
+    {
+      queue: 'analytics',
+      kind: 'report.aggregate',
+      payload: { values: [180, 220, 195, 310, 275, 289] },
+    },
+    {
+      queue: 'media',
+      kind: 'flaky',
+      payload: { failures: 1 },
+      backoffBase: 1000,
+      backoffCap: 2000,
+    },
+    {
+      queue: 'notifications',
+      kind: 'outbox.publish',
+      payload: { topic: 'report.ready', message: { report: 'weekly-summary' } },
+    },
+    {
+      queue: 'notifications',
+      kind: 'permanent.fail',
+      payload: { reason: 'demonstrate dead-letter inspection' },
+    },
+    ...Array.from({ length: 8 }, (_, i) => ({
+      queue: i % 2 ? 'media' : 'analytics',
+      kind: 'sleep',
+      payload: { ms: 1000 + i * 250 },
+      priority: i % 3,
+      runAt: store.now() + i * 1500,
+    })),
+  ];
+  const jobs = submitBulk(store, specs);
+  const workflow = submitWorkflow(store, {
+    name: 'publish-pipeline',
+    nodes: [
+      { key: 'fetch', job: { queue: 'media', kind: 'sleep', payload: { ms: 1000 } } },
+      {
+        key: 'hash',
+        job: { queue: 'media', kind: 'hash.batch', payload: { items: ['asset-a', 'asset-b'] } },
+        dependsOn: ['fetch'],
+      },
+      {
+        key: 'summarize',
+        job: {
+          queue: 'analytics',
+          kind: 'report.aggregate',
+          payload: { values: [12, 30, 25, 18] },
+        },
+        dependsOn: ['fetch'],
+      },
+      {
+        key: 'notify',
+        job: {
+          queue: 'notifications',
+          kind: 'outbox.publish',
+          payload: { topic: 'pipeline.complete' },
+        },
+        dependsOn: ['hash', 'summarize'],
+      },
+    ],
+  });
+  if (!store.db.prepare('SELECT 1 FROM schedules LIMIT 1').get())
+    createSchedule(store, {
+      queue: 'analytics',
+      kind: 'report.aggregate',
+      payload: { values: [10, 20, 30] },
+      intervalMs: 60000,
+    });
+  return { seeded: true, jobs: jobs.length, workflowId: workflow.id };
+}

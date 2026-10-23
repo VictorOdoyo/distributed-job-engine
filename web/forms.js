@@ -1,3 +1,65 @@
-import {api,setToken} from './api.js';
-const presets={'hash.batch':{items:['asset-a.png','asset-b.webp']},'report.aggregate':{values:[12,24,18,36]},'text.normalize':{items:[' Hello ','hello','WORLD']},sleep:{ms:3000},flaky:{failures:1},'permanent.fail':{},'outbox.publish':{topic:'demo.ready',message:{report:'weekly'}}};
-export function setupForms({refresh,message}){let schedule=false;const $=id=>document.getElementById(id);for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>$(b.dataset.close).close();const open=repeat=>{schedule=repeat;$('submit-title').textContent=repeat?'Create recurring schedule':'Submit a job';$('submit-job').textContent=repeat?'Create schedule ↗':'Submit job ↗';$('job-options').hidden=repeat;$('schedule-options').hidden=!repeat;$('form-error').textContent='';$('job-dialog').showModal();};$('new-job').onclick=()=>open(false);$('new-schedule').onclick=()=>open(true);$('job-kind').onchange=()=>{$('job-payload').value=JSON.stringify(presets[$('job-kind').value],null,2);};$('job-form').onsubmit=async event=>{event.preventDefault();$('submit-job').disabled=true;try{const body={queue:$('job-queue').value,kind:$('job-kind').value,payload:JSON.parse($('job-payload').value)};if(schedule)body.intervalMs=Number($('schedule-interval').value)*1000;else Object.assign(body,{priority:Number($('job-priority').value),runAt:Date.now()+Number($('job-delay').value)*1000,maxAttempts:Number($('job-attempts').value)});const r=await api(schedule?'schedules':'jobs',{method:'POST',body});$('job-dialog').close();message(schedule?'Recurring schedule created.':'Job '+r.job.id.slice(0,8)+' committed.');await refresh();}catch(e){$('form-error').textContent=e.message;}finally{$('submit-job').disabled=false;}};$('connection-button').onclick=()=>$('connection-dialog').showModal();$('connection-form').onsubmit=async e=>{e.preventDefault();setToken($('token').value);$('connection-dialog').close();await refresh();};}
+import { api, setToken } from './api.js';
+const presets = {
+  'hash.batch': { items: ['asset-a.png', 'asset-b.webp'] },
+  'report.aggregate': { values: [12, 24, 18, 36] },
+  'text.normalize': { items: [' Hello ', 'hello', 'WORLD'] },
+  sleep: { ms: 3000 },
+  flaky: { failures: 1 },
+  'permanent.fail': {},
+  'outbox.publish': { topic: 'demo.ready', message: { report: 'weekly' } },
+};
+export function setupForms({ refresh, message }) {
+  let schedule = false;
+  const $ = (id) => document.getElementById(id);
+  for (const b of document.querySelectorAll('[data-close]'))
+    b.onclick = () => $(b.dataset.close).close();
+  const open = (repeat) => {
+    schedule = repeat;
+    $('submit-title').textContent = repeat ? 'Create recurring schedule' : 'Submit a job';
+    $('submit-job').textContent = repeat ? 'Create schedule ↗' : 'Submit job ↗';
+    $('job-options').hidden = repeat;
+    $('schedule-options').hidden = !repeat;
+    $('form-error').textContent = '';
+    $('job-dialog').showModal();
+  };
+  $('new-job').onclick = () => open(false);
+  $('new-schedule').onclick = () => open(true);
+  $('job-kind').onchange = () => {
+    $('job-payload').value = JSON.stringify(presets[$('job-kind').value], null, 2);
+  };
+  $('job-form').onsubmit = async (event) => {
+    event.preventDefault();
+    $('submit-job').disabled = true;
+    try {
+      const body = {
+        queue: $('job-queue').value,
+        kind: $('job-kind').value,
+        payload: JSON.parse($('job-payload').value),
+      };
+      if (schedule) body.intervalMs = Number($('schedule-interval').value) * 1000;
+      else
+        Object.assign(body, {
+          priority: Number($('job-priority').value),
+          runAt: Date.now() + Number($('job-delay').value) * 1000,
+          maxAttempts: Number($('job-attempts').value),
+        });
+      const r = await api(schedule ? 'schedules' : 'jobs', { method: 'POST', body });
+      $('job-dialog').close();
+      message(
+        schedule ? 'Recurring schedule created.' : 'Job ' + r.job.id.slice(0, 8) + ' committed.',
+      );
+      await refresh();
+    } catch (e) {
+      $('form-error').textContent = e.message;
+    } finally {
+      $('submit-job').disabled = false;
+    }
+  };
+  $('connection-button').onclick = () => $('connection-dialog').showModal();
+  $('connection-form').onsubmit = async (e) => {
+    e.preventDefault();
+    setToken($('token').value);
+    $('connection-dialog').close();
+    await refresh();
+  };
+}

@@ -1,2 +1,27 @@
-import {integer} from './validation.js';
-export function history(store,{buckets=30,intervalMs=60000}={}){integer(buckets,'buckets',2,240);integer(intervalMs,'intervalMs',1000,3600000);const end=Math.floor(store.now()/intervalMs)*intervalMs,start=end-(buckets-1)*intervalMs,rows=store.db.prepare("SELECT CAST((time-?)/? AS INTEGER) bucket,type,count(*) n FROM events WHERE time>=? AND time<? AND type IN('job.submitted','job.succeeded','job.failed','job.retry_scheduled') GROUP BY bucket,type").all(start,intervalMs,start,end+intervalMs),points=Array.from({length:buckets},(_,i)=>({time:start+i*intervalMs,submitted:0,succeeded:0,failed:0,retries:0}));const keys={'job.submitted':'submitted','job.succeeded':'succeeded','job.failed':'failed','job.retry_scheduled':'retries'};for(const row of rows)if(points[row.bucket])points[row.bucket][keys[row.type]]=row.n;return{intervalMs,points};}
+import { integer } from './validation.js';
+export function history(store, { buckets = 30, intervalMs = 60000 } = {}) {
+  integer(buckets, 'buckets', 2, 240);
+  integer(intervalMs, 'intervalMs', 1000, 3600000);
+  const end = Math.floor(store.now() / intervalMs) * intervalMs,
+    start = end - (buckets - 1) * intervalMs,
+    rows = store.db
+      .prepare(
+        "SELECT CAST((time-?)/? AS INTEGER) bucket,type,count(*) n FROM events WHERE time>=? AND time<? AND type IN('job.submitted','job.succeeded','job.failed','job.retry_scheduled') GROUP BY bucket,type",
+      )
+      .all(start, intervalMs, start, end + intervalMs),
+    points = Array.from({ length: buckets }, (_, i) => ({
+      time: start + i * intervalMs,
+      submitted: 0,
+      succeeded: 0,
+      failed: 0,
+      retries: 0,
+    }));
+  const keys = {
+    'job.submitted': 'submitted',
+    'job.succeeded': 'succeeded',
+    'job.failed': 'failed',
+    'job.retry_scheduled': 'retries',
+  };
+  for (const row of rows) if (points[row.bucket]) points[row.bucket][keys[row.type]] = row.n;
+  return { intervalMs, points };
+}

@@ -1,2 +1,27 @@
-import {getWorkflow} from './workflow.js';import {CLEAR_LEASE} from './fencing.js';import {emit} from './events.js';
-export function cancelWorkflow(store,id){return store.tx(now=>{const w=getWorkflow(store,id);let changed=0;for(const j of w.jobs){if(['succeeded','failed','cancelled'].includes(j.state))continue;store.db.prepare("UPDATE jobs SET state='cancelled',finished_at=?,updated_at=?,"+CLEAR_LEASE+' WHERE id=?').run(now,now,j.id);if(j.lease_token)store.db.prepare("UPDATE attempts SET status='cancelled',finished_at=? WHERE token=?").run(now,j.lease_token);emit(store,now,'job.cancelled',j,{workflowId:id});changed++;}emit(store,now,'workflow.cancelled',null,{workflowId:id,changed});return{changed,workflow:getWorkflow(store,id)};});}
+import { getWorkflow } from './workflow.js';
+import { CLEAR_LEASE } from './fencing.js';
+import { emit } from './events.js';
+export function cancelWorkflow(store, id) {
+  return store.tx((now) => {
+    const w = getWorkflow(store, id);
+    let changed = 0;
+    for (const j of w.jobs) {
+      if (['succeeded', 'failed', 'cancelled'].includes(j.state)) continue;
+      store.db
+        .prepare(
+          "UPDATE jobs SET state='cancelled',finished_at=?,updated_at=?," +
+            CLEAR_LEASE +
+            ' WHERE id=?',
+        )
+        .run(now, now, j.id);
+      if (j.lease_token)
+        store.db
+          .prepare("UPDATE attempts SET status='cancelled',finished_at=? WHERE token=?")
+          .run(now, j.lease_token);
+      emit(store, now, 'job.cancelled', j, { workflowId: id });
+      changed++;
+    }
+    emit(store, now, 'workflow.cancelled', null, { workflowId: id, changed });
+    return { changed, workflow: getWorkflow(store, id) };
+  });
+}

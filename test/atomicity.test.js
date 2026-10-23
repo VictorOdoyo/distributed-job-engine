@@ -1,3 +1,42 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {fixture} from './helpers.js';import {submit,registerWorker,claim,complete,getJob} from '../src/index.js';
-test('an outbox write fault rolls back successful completion and its journal event',t=>{const{store}=fixture(t);registerWorker(store,{id:'w'});submit(store,{kind:'x'});const j=claim(store,'w');store.db.exec("CREATE TRIGGER fail_effect BEFORE INSERT ON outbox BEGIN SELECT RAISE(ABORT,'injected write failure'); END;");assert.throws(()=>complete(store,j.id,j.lease_token,{done:true},{effects:[{topic:'notify',payload:{}}]}));assert.equal(getJob(store,j.id).state,'running');assert.equal(getJob(store,j.id).result,null);assert.equal(store.db.prepare("SELECT status FROM attempts WHERE job_id=?").get(j.id).status,'running');assert.equal(store.db.prepare("SELECT count(*) n FROM events WHERE type='job.succeeded'").get().n,0);store.db.exec('DROP TRIGGER fail_effect');assert.equal(complete(store,j.id,j.lease_token,{done:true}).state,'succeeded');});
-test('idempotency keys expire explicitly and are scoped by queue',t=>{const f=fixture(t),spec={kind:'x',idempotencyKey:'same',dedupTtl:1000},a=submit(f.store,spec).job;assert.notEqual(submit(f.store,{...spec,queue:'other'}).job.id,a.id);f.advance(1000);assert.notEqual(submit(f.store,spec).job.id,a.id);});
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { fixture } from './helpers.js';
+import { submit, registerWorker, claim, complete, getJob } from '../src/index.js';
+test('an outbox write fault rolls back successful completion and its journal event', (t) => {
+  const { store } = fixture(t);
+  registerWorker(store, { id: 'w' });
+  submit(store, { kind: 'x' });
+  const j = claim(store, 'w');
+  store.db.exec(
+    "CREATE TRIGGER fail_effect BEFORE INSERT ON outbox BEGIN SELECT RAISE(ABORT,'injected write failure'); END;",
+  );
+  assert.throws(() =>
+    complete(
+      store,
+      j.id,
+      j.lease_token,
+      { done: true },
+      { effects: [{ topic: 'notify', payload: {} }] },
+    ),
+  );
+  assert.equal(getJob(store, j.id).state, 'running');
+  assert.equal(getJob(store, j.id).result, null);
+  assert.equal(
+    store.db.prepare('SELECT status FROM attempts WHERE job_id=?').get(j.id).status,
+    'running',
+  );
+  assert.equal(
+    store.db.prepare("SELECT count(*) n FROM events WHERE type='job.succeeded'").get().n,
+    0,
+  );
+  store.db.exec('DROP TRIGGER fail_effect');
+  assert.equal(complete(store, j.id, j.lease_token, { done: true }).state, 'succeeded');
+});
+test('idempotency keys expire explicitly and are scoped by queue', (t) => {
+  const f = fixture(t),
+    spec = { kind: 'x', idempotencyKey: 'same', dedupTtl: 1000 },
+    a = submit(f.store, spec).job;
+  assert.notEqual(submit(f.store, { ...spec, queue: 'other' }).job.id, a.id);
+  f.advance(1000);
+  assert.notEqual(submit(f.store, spec).job.id, a.id);
+});

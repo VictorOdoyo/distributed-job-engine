@@ -1,2 +1,19 @@
-import {integer} from './validation.js';
-export function listWorkflows(store,{limit=100}={}){integer(limit,'limit',1,500);return store.db.prepare("SELECT w.*,count(j.id) nodes,sum(CASE WHEN j.state='succeeded' THEN 1 ELSE 0 END) succeeded,sum(CASE WHEN j.state='failed' THEN 1 ELSE 0 END) failed,sum(CASE WHEN j.state='cancelled' THEN 1 ELSE 0 END) cancelled FROM workflows w LEFT JOIN jobs j ON j.workflow_id=w.id GROUP BY w.id ORDER BY w.created_at DESC,w.id LIMIT ?").all(limit).map(w=>({...w,state:w.failed?'failed':w.cancelled?'cancelled':w.succeeded===w.nodes?'succeeded':'running'}));}
+import { integer } from './validation.js';
+export function listWorkflows(store, { limit = 100 } = {}) {
+  integer(limit, 'limit', 1, 500);
+  return store.db
+    .prepare(
+      "SELECT w.*,count(j.id) nodes,sum(CASE WHEN j.state='succeeded' THEN 1 ELSE 0 END) succeeded,sum(CASE WHEN j.state='failed' THEN 1 ELSE 0 END) failed,sum(CASE WHEN j.state='cancelled' THEN 1 ELSE 0 END) cancelled FROM workflows w LEFT JOIN jobs j ON j.workflow_id=w.id GROUP BY w.id ORDER BY w.created_at DESC,w.id LIMIT ?",
+    )
+    .all(limit)
+    .map((w) => ({
+      ...w,
+      state: w.failed
+        ? 'failed'
+        : w.cancelled
+          ? 'cancelled'
+          : w.succeeded === w.nodes
+            ? 'succeeded'
+            : 'running',
+    }));
+}

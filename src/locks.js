@@ -1,4 +1,49 @@
-import {randomUUID} from 'node:crypto';import {name,integer} from './validation.js';import {requireThat} from './errors.js';
-export function acquireLock(store,key,owner,{ttlMs=10000}={}){name(key,'Lock');name(owner,'Owner');integer(ttlMs,'ttlMs',100,60000);return store.tx(now=>{const old=store.db.prepare('SELECT * FROM locks WHERE name=?').get(key);if(old&&old.expires_at>now)return null;const token=randomUUID(),epoch=(old?.epoch??0)+1;store.db.prepare('INSERT INTO locks(name,owner,token,expires_at,epoch) VALUES(?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET owner=excluded.owner,token=excluded.token,expires_at=excluded.expires_at,epoch=excluded.epoch').run(key,owner,token,now+ttlMs,epoch);return store.db.prepare('SELECT * FROM locks WHERE name=?').get(key);});}
-export function renewLock(store,key,token,{ttlMs=10000}={}){name(key,'Lock');name(token,'Token');integer(ttlMs,'ttlMs',100,60000);return store.tx(now=>{const row=store.db.prepare('SELECT * FROM locks WHERE name=?').get(key);requireThat(row&&row.token===token&&row.expires_at>now,'LOCK_FENCED','Lock no longer owned',409);store.db.prepare('UPDATE locks SET expires_at=? WHERE name=?').run(now+ttlMs,key);return store.db.prepare('SELECT * FROM locks WHERE name=?').get(key);});}
-export function releaseLock(store,key,token){return store.tx(now=>{const row=store.db.prepare('SELECT * FROM locks WHERE name=?').get(key);requireThat(row&&row.token===token&&row.expires_at>now,'LOCK_FENCED','Lock no longer owned',409);store.db.prepare('UPDATE locks SET expires_at=0 WHERE name=?').run(key);return true;});}
+import { randomUUID } from 'node:crypto';
+import { name, integer } from './validation.js';
+import { requireThat } from './errors.js';
+export function acquireLock(store, key, owner, { ttlMs = 10000 } = {}) {
+  name(key, 'Lock');
+  name(owner, 'Owner');
+  integer(ttlMs, 'ttlMs', 100, 60000);
+  return store.tx((now) => {
+    const old = store.db.prepare('SELECT * FROM locks WHERE name=?').get(key);
+    if (old && old.expires_at > now) return null;
+    const token = randomUUID(),
+      epoch = (old?.epoch ?? 0) + 1;
+    store.db
+      .prepare(
+        'INSERT INTO locks(name,owner,token,expires_at,epoch) VALUES(?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET owner=excluded.owner,token=excluded.token,expires_at=excluded.expires_at,epoch=excluded.epoch',
+      )
+      .run(key, owner, token, now + ttlMs, epoch);
+    return store.db.prepare('SELECT * FROM locks WHERE name=?').get(key);
+  });
+}
+export function renewLock(store, key, token, { ttlMs = 10000 } = {}) {
+  name(key, 'Lock');
+  name(token, 'Token');
+  integer(ttlMs, 'ttlMs', 100, 60000);
+  return store.tx((now) => {
+    const row = store.db.prepare('SELECT * FROM locks WHERE name=?').get(key);
+    requireThat(
+      row && row.token === token && row.expires_at > now,
+      'LOCK_FENCED',
+      'Lock no longer owned',
+      409,
+    );
+    store.db.prepare('UPDATE locks SET expires_at=? WHERE name=?').run(now + ttlMs, key);
+    return store.db.prepare('SELECT * FROM locks WHERE name=?').get(key);
+  });
+}
+export function releaseLock(store, key, token) {
+  return store.tx((now) => {
+    const row = store.db.prepare('SELECT * FROM locks WHERE name=?').get(key);
+    requireThat(
+      row && row.token === token && row.expires_at > now,
+      'LOCK_FENCED',
+      'Lock no longer owned',
+      409,
+    );
+    store.db.prepare('UPDATE locks SET expires_at=0 WHERE name=?').run(key);
+    return true;
+  });
+}

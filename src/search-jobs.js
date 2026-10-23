@@ -1,2 +1,51 @@
-import {name,text,integer,fields} from './validation.js';import {requireThat} from './errors.js';import {hydrate} from './jobs.js';
-export function searchJobs(store,options={}){fields(options,['query','queue','state','traceId','tag','limit']);const where=[],args=[];if(options.query){text(options.query,'query',100);const q='%'+options.query.replaceAll('\\','\\\\').replaceAll('%','\\%').replaceAll('_','\\_')+'%';where.push("(id LIKE ? ESCAPE '\\' OR kind LIKE ? ESCAPE '\\')");args.push(q,q);}for(const[key,column]of[['queue','queue'],['traceId','trace_id']])if(options[key]){name(options[key],key);where.push(column+'=?');args.push(options[key]);}if(options.state){requireThat(['waiting','blocked','running','succeeded','failed','cancelled'].includes(options.state),'VALIDATION','Invalid state');where.push('state=?');args.push(options.state);}if(options.tag){fields(options.tag,['key','value']);name(options.tag.key,'Tag key');text(options.tag.value,'Tag value',200);where.push('json_extract(tags,?)=?');args.push('$.'+options.tag.key,options.tag.value);}const limit=integer(options.limit??100,'limit',1,500);return store.db.prepare('SELECT * FROM jobs'+(where.length?' WHERE '+where.join(' AND '):'')+' ORDER BY created_at DESC,id DESC LIMIT ?').all(...args,limit).map(hydrate);}
+import { name, text, integer, fields } from './validation.js';
+import { requireThat } from './errors.js';
+import { hydrate } from './jobs.js';
+export function searchJobs(store, options = {}) {
+  fields(options, ['query', 'queue', 'state', 'traceId', 'tag', 'limit']);
+  const where = [],
+    args = [];
+  if (options.query) {
+    text(options.query, 'query', 100);
+    const q =
+      '%' +
+      options.query.replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_') +
+      '%';
+    where.push("(id LIKE ? ESCAPE '\\' OR kind LIKE ? ESCAPE '\\')");
+    args.push(q, q);
+  }
+  for (const [key, column] of [
+    ['queue', 'queue'],
+    ['traceId', 'trace_id'],
+  ])
+    if (options[key]) {
+      name(options[key], key);
+      where.push(column + '=?');
+      args.push(options[key]);
+    }
+  if (options.state) {
+    requireThat(
+      ['waiting', 'blocked', 'running', 'succeeded', 'failed', 'cancelled'].includes(options.state),
+      'VALIDATION',
+      'Invalid state',
+    );
+    where.push('state=?');
+    args.push(options.state);
+  }
+  if (options.tag) {
+    fields(options.tag, ['key', 'value']);
+    name(options.tag.key, 'Tag key');
+    text(options.tag.value, 'Tag value', 200);
+    where.push('json_extract(tags,?)=?');
+    args.push('$.' + options.tag.key, options.tag.value);
+  }
+  const limit = integer(options.limit ?? 100, 'limit', 1, 500);
+  return store.db
+    .prepare(
+      'SELECT * FROM jobs' +
+        (where.length ? ' WHERE ' + where.join(' AND ') : '') +
+        ' ORDER BY created_at DESC,id DESC LIMIT ?',
+    )
+    .all(...args, limit)
+    .map(hydrate);
+}

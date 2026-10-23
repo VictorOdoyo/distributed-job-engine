@@ -1,4 +1,99 @@
-import {randomUUID} from 'node:crypto';import {name,fields} from './validation.js';import {requireThat,notFound} from './errors.js';import {normalizeSpec,submitIn} from './submit.js';import {hydrate} from './jobs.js';import {emit} from './events.js';
-export function validateGraph(nodes){requireThat(Array.isArray(nodes)&&nodes.length>0&&nodes.length<=100,'VALIDATION','Workflow requires 1..100 nodes');const map=new Map();for(const node of nodes){fields(node,['key','job','dependsOn']);name(node.key,'Node key');requireThat(!map.has(node.key),'VALIDATION','Duplicate node key');normalizeSpec(node.job);requireThat(!node.job.idempotencyKey,'VALIDATION','Workflow nodes cannot use idempotency keys');const parents=node.dependsOn??[];requireThat(Array.isArray(parents)&&parents.length<=100&&new Set(parents).size===parents.length,'VALIDATION','Invalid dependencies');map.set(node.key,{...node,dependsOn:parents});}let edges=0;for(const n of map.values())for(const p of n.dependsOn){requireThat(map.has(p)&&p!==n.key,'VALIDATION','Missing or self dependency');edges++;}requireThat(edges<=500,'VALIDATION','Workflow exceeds 500 edges');const out=[],done=new Set();while(out.length<map.size){let progress=false;for(const n of map.values())if(!done.has(n.key)&&n.dependsOn.every(p=>done.has(p))){out.push(n);done.add(n.key);progress=true;}requireThat(progress,'WORKFLOW_CYCLE','Dependency graph contains a cycle');}return out;}
-export function submitWorkflow(store,{name:label='workflow',nodes}={}){name(label,'Workflow name');const ordered=validateGraph(nodes),id=randomUUID(),trace=randomUUID();return store.tx(now=>{store.db.prepare('INSERT INTO workflows VALUES(?,?,?)').run(id,label,now);const jobs={};for(const n of ordered)jobs[n.key]=submitIn(store,n.job,now,{state:n.dependsOn.length?'blocked':'waiting',workflowId:id,traceId:trace}).job;for(const n of ordered)for(const p of n.dependsOn)store.db.prepare('INSERT INTO dependencies VALUES(?,?)').run(jobs[p].id,jobs[n.key].id);emit(store,now,'workflow.submitted',null,{workflowId:id,nodes:ordered.length,traceId:trace});return{id,name:label,traceId:trace,jobs};});}
-export function getWorkflow(store,id){name(id,'Workflow ID');const workflow=store.db.prepare('SELECT * FROM workflows WHERE id=?').get(id);if(!workflow)notFound('Workflow');const jobs=store.db.prepare('SELECT * FROM jobs WHERE workflow_id=? ORDER BY created_at,id').all(id).map(hydrate),state=jobs.some(j=>j.state==='failed')?'failed':jobs.some(j=>j.state==='cancelled')?'cancelled':jobs.every(j=>j.state==='succeeded')?'succeeded':'running',edges=store.db.prepare('SELECT d.* FROM dependencies d JOIN jobs j ON j.id=d.child WHERE j.workflow_id=? ORDER BY parent,child').all(id);return{...workflow,state,jobs,edges};}
+import { randomUUID } from 'node:crypto';
+import { name, fields } from './validation.js';
+import { requireThat, notFound } from './errors.js';
+import { normalizeSpec, submitIn } from './submit.js';
+import { hydrate } from './jobs.js';
+import { emit } from './events.js';
+export function validateGraph(nodes) {
+  requireThat(
+    Array.isArray(nodes) && nodes.length > 0 && nodes.length <= 100,
+    'VALIDATION',
+    'Workflow requires 1..100 nodes',
+  );
+  const map = new Map();
+  for (const node of nodes) {
+    fields(node, ['key', 'job', 'dependsOn']);
+    name(node.key, 'Node key');
+    requireThat(!map.has(node.key), 'VALIDATION', 'Duplicate node key');
+    normalizeSpec(node.job);
+    requireThat(
+      !node.job.idempotencyKey,
+      'VALIDATION',
+      'Workflow nodes cannot use idempotency keys',
+    );
+    const parents = node.dependsOn ?? [];
+    requireThat(
+      Array.isArray(parents) && parents.length <= 100 && new Set(parents).size === parents.length,
+      'VALIDATION',
+      'Invalid dependencies',
+    );
+    map.set(node.key, { ...node, dependsOn: parents });
+  }
+  let edges = 0;
+  for (const n of map.values())
+    for (const p of n.dependsOn) {
+      requireThat(map.has(p) && p !== n.key, 'VALIDATION', 'Missing or self dependency');
+      edges++;
+    }
+  requireThat(edges <= 500, 'VALIDATION', 'Workflow exceeds 500 edges');
+  const out = [],
+    done = new Set();
+  while (out.length < map.size) {
+    let progress = false;
+    for (const n of map.values())
+      if (!done.has(n.key) && n.dependsOn.every((p) => done.has(p))) {
+        out.push(n);
+        done.add(n.key);
+        progress = true;
+      }
+    requireThat(progress, 'WORKFLOW_CYCLE', 'Dependency graph contains a cycle');
+  }
+  return out;
+}
+export function submitWorkflow(store, { name: label = 'workflow', nodes } = {}) {
+  name(label, 'Workflow name');
+  const ordered = validateGraph(nodes),
+    id = randomUUID(),
+    trace = randomUUID();
+  return store.tx((now) => {
+    store.db.prepare('INSERT INTO workflows VALUES(?,?,?)').run(id, label, now);
+    const jobs = {};
+    for (const n of ordered)
+      jobs[n.key] = submitIn(store, n.job, now, {
+        state: n.dependsOn.length ? 'blocked' : 'waiting',
+        workflowId: id,
+        traceId: trace,
+      }).job;
+    for (const n of ordered)
+      for (const p of n.dependsOn)
+        store.db.prepare('INSERT INTO dependencies VALUES(?,?)').run(jobs[p].id, jobs[n.key].id);
+    emit(store, now, 'workflow.submitted', null, {
+      workflowId: id,
+      nodes: ordered.length,
+      traceId: trace,
+    });
+    return { id, name: label, traceId: trace, jobs };
+  });
+}
+export function getWorkflow(store, id) {
+  name(id, 'Workflow ID');
+  const workflow = store.db.prepare('SELECT * FROM workflows WHERE id=?').get(id);
+  if (!workflow) notFound('Workflow');
+  const jobs = store.db
+      .prepare('SELECT * FROM jobs WHERE workflow_id=? ORDER BY created_at,id')
+      .all(id)
+      .map(hydrate),
+    state = jobs.some((j) => j.state === 'failed')
+      ? 'failed'
+      : jobs.some((j) => j.state === 'cancelled')
+        ? 'cancelled'
+        : jobs.every((j) => j.state === 'succeeded')
+          ? 'succeeded'
+          : 'running',
+    edges = store.db
+      .prepare(
+        'SELECT d.* FROM dependencies d JOIN jobs j ON j.id=d.child WHERE j.workflow_id=? ORDER BY parent,child',
+      )
+      .all(id);
+  return { ...workflow, state, jobs, edges };
+}

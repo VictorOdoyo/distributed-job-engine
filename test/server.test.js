@@ -1,5 +1,34 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import {fixture} from './helpers.js';import {createServer} from '../src/server.js';
-test('real HTTP API authenticates remote commands and rejects cross-origin writes',async t=>{const{store}=fixture(t),token='secret'.repeat(5),server=createServer(store,{token,rateLimit:false});await new Promise(r=>server.listen(0,'127.0.0.1',r));t.after(()=>{server.closeAllConnections();return new Promise(r=>server.close(r));});const base='http://127.0.0.1:'+server.address().port;assert.equal((await fetch(base+'/health')).status,200);assert.equal((await fetch(base+'/api/overview')).status,401);const headers={Authorization:'Bearer '+token,'Content-Type':'application/json'};assert.equal((await fetch(base+'/api/jobs',{method:'POST',headers:{...headers,Origin:'https://foreign.test'},body:'{"kind":"x"}'})).status,403);const r=await fetch(base+'/api/jobs',{method:'POST',headers,body:'{"kind":"x"}'});assert.equal(r.status,201);assert.equal((await r.json()).job.state,'waiting');assert.equal((await fetch(base+'/api/nope',{headers})).status,404);assert.equal((await fetch(base+'/.git/config')).status,404);});
+import { fixture } from './helpers.js';
+import { createServer } from '../src/server.js';
+test('real HTTP API authenticates remote commands and rejects cross-origin writes', async (t) => {
+  const { store } = fixture(t),
+    token = 'secret'.repeat(5),
+    server = createServer(store, { token, rateLimit: false });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  t.after(() => {
+    server.closeAllConnections();
+    return new Promise((r) => server.close(r));
+  });
+  const base = 'http://127.0.0.1:' + server.address().port;
+  assert.equal((await fetch(base + '/health')).status, 200);
+  assert.equal((await fetch(base + '/api/overview')).status, 401);
+  const headers = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' };
+  assert.equal(
+    (
+      await fetch(base + '/api/jobs', {
+        method: 'POST',
+        headers: { ...headers, Origin: 'https://foreign.test' },
+        body: '{"kind":"x"}',
+      })
+    ).status,
+    403,
+  );
+  const r = await fetch(base + '/api/jobs', { method: 'POST', headers, body: '{"kind":"x"}' });
+  assert.equal(r.status, 201);
+  assert.equal((await r.json()).job.state, 'waiting');
+  assert.equal((await fetch(base + '/api/nope', { headers })).status, 404);
+  assert.equal((await fetch(base + '/.git/config')).status, 404);
+});

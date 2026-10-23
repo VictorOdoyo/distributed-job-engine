@@ -1,4 +1,67 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {execFile} from 'node:child_process';import {promisify} from 'node:util';import {mkdtempSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import path from 'node:path';import {setTimeout as delay} from 'node:timers/promises';import {fileURLToPath} from 'node:url';import {Store,submit,claim,complete,registerWorker,reap,getJob,integrity} from '../src/index.js';
-const exec=promisify(execFile),child=fileURLToPath(new URL('./fixtures/claim-child.mjs',import.meta.url));
-test('independent coordinator processes claim every durable job once per attempt',async()=>{const dir=mkdtempSync(path.join(tmpdir(),'engine-process-')),file=path.join(dir,'jobs.db'),store=new Store(file,{timeout:10000});try{for(let i=0;i<80;i++)submit(store,{kind:'x',payload:{i}});const[a,b]=await Promise.all([exec(process.execPath,[child,file,'worker-a'],{timeout:20000}),exec(process.execPath,[child,file,'worker-b'],{timeout:20000})]),ids=[...JSON.parse(a.stdout),...JSON.parse(b.stdout)];assert.equal(ids.length,80);assert.equal(new Set(ids).size,80);assert.equal(store.db.prepare("SELECT count(*) n FROM jobs WHERE state='succeeded'").get().n,80);assert(integrity(store).ok);}finally{store.close();assert(path.resolve(dir).startsWith(path.resolve(tmpdir())+path.sep));rmSync(dir,{recursive:true,force:true});}});
-test('a terminated process leaves durable work recoverable and stale results fenced',async()=>{const dir=mkdtempSync(path.join(tmpdir(),'engine-crash-')),file=path.join(dir,'jobs.db'),store=new Store(file);try{const j=submit(store,{kind:'x',backoffBase:0,backoffCap:0}).job;const r=await exec(process.execPath,[child,file,'crashed','crash'],{timeout:10000}),old=JSON.parse(r.stdout);await delay(400);assert.equal(reap(store).recovered,1);registerWorker(store,{id:'recovery'});const fresh=claim(store,'recovery');assert.equal(fresh.id,j.id);assert.throws(()=>complete(store,j.id,old.lease_token,'stale'));complete(store,j.id,fresh.lease_token,'recovered');assert.equal(getJob(store,j.id).result,'recovered');}finally{store.close();assert(path.resolve(dir).startsWith(path.resolve(tmpdir())+path.sep));rmSync(dir,{recursive:true,force:true});}});
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
+import {
+  Store,
+  submit,
+  claim,
+  complete,
+  registerWorker,
+  reap,
+  getJob,
+  integrity,
+} from '../src/index.js';
+const exec = promisify(execFile),
+  child = fileURLToPath(new URL('./fixtures/claim-child.mjs', import.meta.url));
+test('independent coordinator processes claim every durable job once per attempt', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'engine-process-')),
+    file = path.join(dir, 'jobs.db'),
+    store = new Store(file, { timeout: 10000 });
+  try {
+    for (let i = 0; i < 80; i++) submit(store, { kind: 'x', payload: { i } });
+    const [a, b] = await Promise.all([
+        exec(process.execPath, [child, file, 'worker-a'], { timeout: 20000 }),
+        exec(process.execPath, [child, file, 'worker-b'], { timeout: 20000 }),
+      ]),
+      ids = [...JSON.parse(a.stdout), ...JSON.parse(b.stdout)];
+    assert.equal(ids.length, 80);
+    assert.equal(new Set(ids).size, 80);
+    assert.equal(
+      store.db.prepare("SELECT count(*) n FROM jobs WHERE state='succeeded'").get().n,
+      80,
+    );
+    assert(integrity(store).ok);
+  } finally {
+    store.close();
+    assert(path.resolve(dir).startsWith(path.resolve(tmpdir()) + path.sep));
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+test('a terminated process leaves durable work recoverable and stale results fenced', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'engine-crash-')),
+    file = path.join(dir, 'jobs.db'),
+    store = new Store(file);
+  try {
+    const j = submit(store, { kind: 'x', backoffBase: 0, backoffCap: 0 }).job;
+    const r = await exec(process.execPath, [child, file, 'crashed', 'crash'], { timeout: 10000 }),
+      old = JSON.parse(r.stdout);
+    await delay(400);
+    assert.equal(reap(store).recovered, 1);
+    registerWorker(store, { id: 'recovery' });
+    const fresh = claim(store, 'recovery');
+    assert.equal(fresh.id, j.id);
+    assert.throws(() => complete(store, j.id, old.lease_token, 'stale'));
+    complete(store, j.id, fresh.lease_token, 'recovered');
+    assert.equal(getJob(store, j.id).result, 'recovered');
+  } finally {
+    store.close();
+    assert(path.resolve(dir).startsWith(path.resolve(tmpdir()) + path.sep));
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

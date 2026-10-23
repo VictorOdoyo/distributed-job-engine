@@ -1,6 +1,104 @@
-import {randomUUID} from 'node:crypto';import {fields,name,integer,boolean} from './validation.js';import {encode,decode} from './codec.js';import {requireThat,notFound} from './errors.js';import {normalizeSpec,submitIn} from './submit.js';import {nextCron,parseCron} from './cron.js';import {emit} from './events.js';
-export function createSchedule(store,spec){fields(spec,['queue','kind','payload','intervalMs','cron','startAt','catchUp']);normalizeSpec({queue:spec.queue,kind:spec.kind,payload:spec.payload});requireThat((spec.intervalMs===undefined)!==(spec.cron===undefined),'VALIDATION','Choose intervalMs or cron');if(spec.intervalMs!==undefined)integer(spec.intervalMs,'intervalMs',1000,2592000000);if(spec.cron!==undefined)parseCron(spec.cron);if(spec.startAt!==undefined)integer(spec.startAt,'startAt',0,8640000000000000-200000000000);if(spec.catchUp!==undefined)boolean(spec.catchUp,'catchUp');return store.tx(now=>{const id=randomUUID(),next=spec.startAt??(spec.cron?nextCron(spec.cron,now):now+spec.intervalMs);store.db.prepare('INSERT INTO schedules(id,queue,kind,payload,interval_ms,cron,next_at,catch_up,created_at) VALUES(?,?,?,?,?,?,?,?,?)').run(id,spec.queue??'default',spec.kind,encode(spec.payload??{}),spec.intervalMs??null,spec.cron??null,next,Number(spec.catchUp??false),now);emit(store,now,'schedule.created',null,{scheduleId:id,nextAt:next});return getSchedule(store,id);});}
-export function getSchedule(store,id){name(id,'Schedule ID');const row=store.db.prepare('SELECT * FROM schedules WHERE id=?').get(id);if(!row)notFound('Schedule');return{...row,payload:decode(row.payload)};}
-export function setSchedulePaused(store,id,paused){boolean(paused,'paused');return store.tx(now=>{getSchedule(store,id);store.db.prepare('UPDATE schedules SET paused=? WHERE id=?').run(Number(paused),id);emit(store,now,'schedule.paused',null,{scheduleId:id,paused});return getSchedule(store,id);});}
-export function listSchedules(store){return store.db.prepare('SELECT * FROM schedules ORDER BY created_at,id LIMIT 500').all().map(r=>({...r,payload:decode(r.payload)}));}
-export function fireSchedules(store,{limit=100,catchUpLimit=10}={}){integer(limit,'limit',1,1000);integer(catchUpLimit,'catchUpLimit',1,100);return store.tx(now=>{const schedules=store.db.prepare('SELECT * FROM schedules WHERE paused=0 AND next_at<=? ORDER BY next_at,id LIMIT ?').all(now,limit);let fired=0;for(const s of schedules){let due=s.next_at,runs=0;while(due<=now&&runs<catchUpLimit){const job=submitIn(store,{queue:s.queue,kind:s.kind,payload:decode(s.payload),idempotencyKey:s.id+'.'+due},now).job;store.db.prepare('INSERT INTO schedule_runs VALUES(?,?,?)').run(s.id,due,job.id);const next=s.cron?nextCron(s.cron,s.catch_up?due:now):s.catch_up?due+s.interval_ms:due+(Math.floor((now-due)/s.interval_ms)+1)*s.interval_ms;store.db.prepare('UPDATE schedules SET last_at=?,next_at=? WHERE id=?').run(due,next,s.id);emit(store,now,'schedule.fired',job,{scheduleId:s.id,dueAt:due});due=next;runs++;fired++;if(!s.catch_up)break;}}return{fired,schedules:schedules.length};});}
+import { randomUUID } from 'node:crypto';
+import { fields, name, integer, boolean } from './validation.js';
+import { encode, decode } from './codec.js';
+import { requireThat, notFound } from './errors.js';
+import { normalizeSpec, submitIn } from './submit.js';
+import { nextCron, parseCron } from './cron.js';
+import { emit } from './events.js';
+export function createSchedule(store, spec) {
+  fields(spec, ['queue', 'kind', 'payload', 'intervalMs', 'cron', 'startAt', 'catchUp']);
+  normalizeSpec({ queue: spec.queue, kind: spec.kind, payload: spec.payload });
+  requireThat(
+    (spec.intervalMs === undefined) !== (spec.cron === undefined),
+    'VALIDATION',
+    'Choose intervalMs or cron',
+  );
+  if (spec.intervalMs !== undefined) integer(spec.intervalMs, 'intervalMs', 1000, 2592000000);
+  if (spec.cron !== undefined) parseCron(spec.cron);
+  if (spec.startAt !== undefined)
+    integer(spec.startAt, 'startAt', 0, 8640000000000000 - 200000000000);
+  if (spec.catchUp !== undefined) boolean(spec.catchUp, 'catchUp');
+  return store.tx((now) => {
+    const id = randomUUID(),
+      next = spec.startAt ?? (spec.cron ? nextCron(spec.cron, now) : now + spec.intervalMs);
+    store.db
+      .prepare(
+        'INSERT INTO schedules(id,queue,kind,payload,interval_ms,cron,next_at,catch_up,created_at) VALUES(?,?,?,?,?,?,?,?,?)',
+      )
+      .run(
+        id,
+        spec.queue ?? 'default',
+        spec.kind,
+        encode(spec.payload ?? {}),
+        spec.intervalMs ?? null,
+        spec.cron ?? null,
+        next,
+        Number(spec.catchUp ?? false),
+        now,
+      );
+    emit(store, now, 'schedule.created', null, { scheduleId: id, nextAt: next });
+    return getSchedule(store, id);
+  });
+}
+export function getSchedule(store, id) {
+  name(id, 'Schedule ID');
+  const row = store.db.prepare('SELECT * FROM schedules WHERE id=?').get(id);
+  if (!row) notFound('Schedule');
+  return { ...row, payload: decode(row.payload) };
+}
+export function setSchedulePaused(store, id, paused) {
+  boolean(paused, 'paused');
+  return store.tx((now) => {
+    getSchedule(store, id);
+    store.db.prepare('UPDATE schedules SET paused=? WHERE id=?').run(Number(paused), id);
+    emit(store, now, 'schedule.paused', null, { scheduleId: id, paused });
+    return getSchedule(store, id);
+  });
+}
+export function listSchedules(store) {
+  return store.db
+    .prepare('SELECT * FROM schedules ORDER BY created_at,id LIMIT 500')
+    .all()
+    .map((r) => ({ ...r, payload: decode(r.payload) }));
+}
+export function fireSchedules(store, { limit = 100, catchUpLimit = 10 } = {}) {
+  integer(limit, 'limit', 1, 1000);
+  integer(catchUpLimit, 'catchUpLimit', 1, 100);
+  return store.tx((now) => {
+    const schedules = store.db
+      .prepare('SELECT * FROM schedules WHERE paused=0 AND next_at<=? ORDER BY next_at,id LIMIT ?')
+      .all(now, limit);
+    let fired = 0;
+    for (const s of schedules) {
+      let due = s.next_at,
+        runs = 0;
+      while (due <= now && runs < catchUpLimit) {
+        const job = submitIn(
+          store,
+          {
+            queue: s.queue,
+            kind: s.kind,
+            payload: decode(s.payload),
+            idempotencyKey: s.id + '.' + due,
+          },
+          now,
+        ).job;
+        store.db.prepare('INSERT INTO schedule_runs VALUES(?,?,?)').run(s.id, due, job.id);
+        const next = s.cron
+          ? nextCron(s.cron, s.catch_up ? due : now)
+          : s.catch_up
+            ? due + s.interval_ms
+            : due + (Math.floor((now - due) / s.interval_ms) + 1) * s.interval_ms;
+        store.db
+          .prepare('UPDATE schedules SET last_at=?,next_at=? WHERE id=?')
+          .run(due, next, s.id);
+        emit(store, now, 'schedule.fired', job, { scheduleId: s.id, dueAt: due });
+        due = next;
+        runs++;
+        fired++;
+        if (!s.catch_up) break;
+      }
+    }
+    return { fired, schedules: schedules.length };
+  });
+}

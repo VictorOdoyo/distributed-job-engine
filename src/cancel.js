@@ -1,2 +1,24 @@
-import {getJob} from './jobs.js';import {CLEAR_LEASE} from './fencing.js';import {emit} from './events.js';import {settleDependencies} from './settle.js';
-export function cancel(store,id){return store.tx(now=>{const job=getJob(store,id);if(['succeeded','failed','cancelled'].includes(job.state))return{job,changed:false};store.db.prepare("UPDATE jobs SET state='cancelled',finished_at=?,updated_at=?,"+CLEAR_LEASE+' WHERE id=?').run(now,now,id);if(job.lease_token)store.db.prepare("UPDATE attempts SET status='cancelled',finished_at=? WHERE token=?").run(now,job.lease_token);emit(store,now,'job.cancelled',job);settleDependencies(store,now);return{job:getJob(store,id),changed:true};});}
+import { getJob } from './jobs.js';
+import { CLEAR_LEASE } from './fencing.js';
+import { emit } from './events.js';
+import { settleDependencies } from './settle.js';
+export function cancel(store, id) {
+  return store.tx((now) => {
+    const job = getJob(store, id);
+    if (['succeeded', 'failed', 'cancelled'].includes(job.state)) return { job, changed: false };
+    store.db
+      .prepare(
+        "UPDATE jobs SET state='cancelled',finished_at=?,updated_at=?," +
+          CLEAR_LEASE +
+          ' WHERE id=?',
+      )
+      .run(now, now, id);
+    if (job.lease_token)
+      store.db
+        .prepare("UPDATE attempts SET status='cancelled',finished_at=? WHERE token=?")
+        .run(now, job.lease_token);
+    emit(store, now, 'job.cancelled', job);
+    settleDependencies(store, now);
+    return { job: getJob(store, id), changed: true };
+  });
+}
