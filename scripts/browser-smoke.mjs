@@ -109,7 +109,14 @@ try {
   await page.locator('[data-view="jobs"]').click();
   await page.locator('#state-filter').selectOption('failed');
   await wait(() => document.querySelector('#jobs-table .badge.failed'));
-  await page.locator('#jobs-table .row-button').first().click();
+  await page
+    .locator('#jobs-table tbody tr')
+    .filter({ has: page.locator('.badge.failed') })
+    .first()
+    .locator('.row-button')
+    .click();
+  await page.locator('#detail-dialog').waitFor({ state: 'visible' });
+  await wait(() => document.querySelector('#detail-content').textContent.includes('PERMANENT'));
   check((await page.locator('#detail-content').innerText()).includes('PERMANENT'));
   await page.locator('#detail-content input[name="note"]').fill('Browser verification note');
   await page.getByRole('button', { name: 'Save note', exact: true }).click();
