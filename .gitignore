@@ -1,0 +1,9 @@
+node_modules/
+artifacts/
+results/
+data/
+*.db
+*.db-shm
+*.db-wal
+*.tgz
+.env

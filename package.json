@@ -1,0 +1,33 @@
+{
+  "name": "@victorodoyo/distributed-job-engine",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Durable SQLite job coordination with fenced leases, remote workers, workflows and an operations console",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node scripts/serve.mjs",
+    "worker": "node scripts/worker.mjs",
+    "test": "node scripts/test.mjs",
+    "benchmark": "node scripts/benchmark.mjs",
+    "test:browser": "node scripts/browser-smoke.mjs",
+    "package:check": "node scripts/package-smoke.mjs"
+  },
+  "exports": "./src/index.js",
+  "files": [
+    "src",
+    "web",
+    "scripts",
+    "docs",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "license": "MIT",
+  "author": "Victor Odoyo",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/VictorOdoyo/distributed-job-engine.git"
+  }
+}
