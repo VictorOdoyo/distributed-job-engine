@@ -7,12 +7,15 @@
     "node": ">=24"
   },
   "scripts": {
-    "start": "node scripts/serve.mjs",
+    "start": "node scripts/serve.mjs --demo",
     "worker": "node scripts/worker.mjs",
     "test": "node scripts/test.mjs",
     "benchmark": "node scripts/benchmark.mjs",
     "test:browser": "node scripts/browser-smoke.mjs",
-    "package:check": "node scripts/package-smoke.mjs"
+    "package:check": "node scripts/package-smoke.mjs",
+    "serve": "node scripts/serve.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "exports": "./src/index.js",
   "files": [
