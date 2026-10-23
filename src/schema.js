@@ -1,0 +1,22 @@
+export const VERSION=1;
+export const SCHEMA=`
+CREATE TABLE queues(name TEXT PRIMARY KEY,paused INTEGER NOT NULL DEFAULT 0 CHECK(paused IN(0,1)),concurrency INTEGER NOT NULL DEFAULT 10 CHECK(concurrency BETWEEN 1 AND 10000),max_pending INTEGER NOT NULL DEFAULT 10000,rate_limit INTEGER NOT NULL DEFAULT 0,rate_window_ms INTEGER NOT NULL DEFAULT 1000,window_start INTEGER NOT NULL DEFAULT 0,window_count INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL);
+CREATE TABLE jobs(id TEXT PRIMARY KEY,queue TEXT NOT NULL REFERENCES queues(name),kind TEXT NOT NULL,payload TEXT NOT NULL,priority INTEGER NOT NULL DEFAULT 0,state TEXT NOT NULL CHECK(state IN('waiting','blocked','running','succeeded','failed','cancelled')),run_at INTEGER NOT NULL,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL,attempts INTEGER NOT NULL DEFAULT 0,max_attempts INTEGER NOT NULL,backoff_base INTEGER NOT NULL,backoff_cap INTEGER NOT NULL,timeout_ms INTEGER NOT NULL,result TEXT,error TEXT,lease_owner TEXT,lease_token TEXT,lease_until INTEGER,started_at INTEGER,finished_at INTEGER,workflow_id TEXT,trace_id TEXT NOT NULL,tags TEXT NOT NULL DEFAULT '{}',replayed_from TEXT, CHECK((state='running' AND lease_owner IS NOT NULL AND lease_token IS NOT NULL AND lease_until IS NOT NULL) OR (state!='running' AND lease_owner IS NULL AND lease_token IS NULL AND lease_until IS NULL)));
+CREATE INDEX jobs_ready ON jobs(queue,state,run_at,priority DESC,created_at,id);
+CREATE INDEX jobs_lease ON jobs(state,lease_until);
+CREATE INDEX jobs_workflow ON jobs(workflow_id,state);
+CREATE INDEX jobs_trace ON jobs(trace_id);
+CREATE TABLE attempts(job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,number INTEGER NOT NULL,token TEXT UNIQUE NOT NULL,worker_id TEXT NOT NULL,started_at INTEGER NOT NULL,finished_at INTEGER,status TEXT NOT NULL CHECK(status IN('running','succeeded','failed','expired','cancelled')),error TEXT,PRIMARY KEY(job_id,number));
+CREATE TABLE workers(id TEXT PRIMARY KEY,status TEXT NOT NULL CHECK(status IN('online','draining','offline')),capacity INTEGER NOT NULL,queues TEXT NOT NULL,metadata TEXT NOT NULL,last_seen INTEGER NOT NULL,expires_at INTEGER NOT NULL,created_at INTEGER NOT NULL);
+CREATE TABLE events(id INTEGER PRIMARY KEY AUTOINCREMENT,time INTEGER NOT NULL,type TEXT NOT NULL,job_id TEXT,queue TEXT,data TEXT NOT NULL);
+CREATE INDEX events_job ON events(job_id,id);
+CREATE TABLE dedup(queue TEXT NOT NULL,key TEXT NOT NULL,fingerprint TEXT NOT NULL,job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,expires_at INTEGER NOT NULL,PRIMARY KEY(queue,key));
+CREATE TABLE dependencies(parent TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,child TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,PRIMARY KEY(parent,child),CHECK(parent<>child));
+CREATE TABLE workflows(id TEXT PRIMARY KEY,name TEXT NOT NULL,created_at INTEGER NOT NULL);
+CREATE TABLE schedules(id TEXT PRIMARY KEY,queue TEXT NOT NULL,kind TEXT NOT NULL,payload TEXT NOT NULL,interval_ms INTEGER,cron TEXT,next_at INTEGER NOT NULL,paused INTEGER NOT NULL DEFAULT 0,catch_up INTEGER NOT NULL DEFAULT 0,created_at INTEGER NOT NULL,last_at INTEGER,CHECK((interval_ms IS NULL)!=(cron IS NULL)));
+CREATE TABLE schedule_runs(schedule_id TEXT NOT NULL REFERENCES schedules(id) ON DELETE CASCADE,due_at INTEGER NOT NULL,job_id TEXT NOT NULL REFERENCES jobs(id),PRIMARY KEY(schedule_id,due_at));
+CREATE TABLE locks(name TEXT PRIMARY KEY,owner TEXT NOT NULL,token TEXT NOT NULL,expires_at INTEGER NOT NULL,epoch INTEGER NOT NULL);
+CREATE TABLE outbox(id TEXT PRIMARY KEY,job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,topic TEXT NOT NULL,payload TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN('pending','delivering','delivered')),created_at INTEGER NOT NULL,token TEXT,lease_until INTEGER,attempts INTEGER NOT NULL DEFAULT 0,delivered_at INTEGER);
+CREATE INDEX outbox_pending ON outbox(state,created_at);
+CREATE TABLE notes(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,author TEXT NOT NULL,text TEXT NOT NULL,created_at INTEGER NOT NULL);
+`;
