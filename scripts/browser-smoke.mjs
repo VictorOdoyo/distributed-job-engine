@@ -69,12 +69,14 @@ try {
   check(store.db.prepare('SELECT count(*) n FROM schedules').get().n === 2);
   await page.locator('[data-view="workflows"]').click();
   await page.getByRole('button', { name: 'Inspect graph ↗' }).first().click();
+  await page.locator('#detail-dialog').waitFor({ state: 'visible' });
   check((await page.locator('.dag-node').count()) === 4);
   await page.locator('[data-close="detail-dialog"]').click();
   await page.locator('#new-job').click();
   await page.locator('#job-payload').fill('broken');
   await page.locator('#submit-job').click();
   check(await page.locator('#job-dialog').isVisible());
+  await wait(() => document.querySelector('#form-error').textContent.length > 0);
   check((await page.locator('#form-error').innerText()).length > 0);
   await page.locator('#job-kind').selectOption('report.aggregate');
   await page.locator('#job-payload').fill('{"values":[5,7,9]}');
@@ -114,6 +116,7 @@ try {
   await page.getByText('Browser verification note — operator', { exact: true }).waitFor();
   check(true);
   await page.getByRole('button', { name: 'Replay as a new job', exact: true }).click();
+  await wait(() => document.querySelector('#message').textContent.includes('replay'));
   check((await page.locator('#message').innerText()).includes('replay'));
   await page.locator('[data-close="detail-dialog"]').click();
   await page.locator('[data-view="events"]').click();
